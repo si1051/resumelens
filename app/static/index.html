@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ResumeLens</title>
+<style>
+  :root {
+    --bg: #f7f7fb; --surface: #fff; --surface-2: #f0f1f7; --border: #e2e4ee; --text: #151827; --muted: #646a80;
+    --primary: #0f766e; --good: #15803d; --ok: #b45309; --bad: #b91c1c; color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --surface: #171a21; --surface-2: #1e222c; --border: #2b3140; --text: #e8eaf0;
+      --muted: #9aa1b5; --primary: #2dd4bf; --good: #4ade80; --ok: #fbbf24; --bad: #f87171; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: baseline; gap: .75rem; }
+  header h1 { font-size: 1.2rem; margin: 0; }
+  header a { margin-left: auto; color: var(--primary); }
+  main { max-width: 1200px; margin: 0 auto; padding: 1.25rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
+  label { font-weight: 600; font-size: .9rem; display: block; margin-bottom: .3rem; }
+  textarea { width: 100%; min-height: 220px; padding: .6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
+  .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  button { background: var(--primary); color: #fff; border: 0; border-radius: 8px; padding: .6rem 1.1rem; font: inherit; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .muted { color: var(--muted); } .small { font-size: .82rem; }
+  .err { color: var(--bad); }
+  .score-wrap { display: flex; gap: 1.25rem; align-items: center; }
+  .dial { --p: 0; width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center;
+    background: conic-gradient(var(--c, var(--primary)) calc(var(--p) * 1%), var(--surface-2) 0); }
+  .dial div { width: 92px; height: 92px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 1.8rem; font-weight: 800; }
+  .grade { font-size: 1.1rem; font-weight: 800; }
+  .bar { display: grid; grid-template-columns: 150px 1fr 40px; gap: .6rem; align-items: center; margin: .35rem 0; font-size: .9rem; }
+  .track { height: 10px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+  .fill { height: 100%; background: var(--primary); }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; margin: .35rem 0 .75rem; }
+  .chip { padding: .1rem .55rem; border-radius: 999px; border: 1px solid var(--border); font-size: .82rem; }
+  .chip.miss { border-color: var(--bad); color: var(--bad); }
+  .chip.hit { border-color: var(--good); color: var(--good); }
+  .sugg { padding: .5rem .7rem; border-left: 4px solid var(--border); background: var(--surface-2); border-radius: 6px; margin: .4rem 0; }
+  .sugg.high { border-color: var(--bad); } .sugg.medium { border-color: var(--ok); } .sugg.low { border-color: var(--muted); }
+  .bullet { border-top: 1px solid var(--border); padding: .5rem 0; }
+  h2 { font-size: 1rem; margin: 1rem 0 .4rem; }
+  #results { grid-column: 1 / -1; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } .bar { grid-template-columns: 110px 1fr 36px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>ResumeLens</h1>
+  <span class="muted small">Explainable resume and job description analysis</span>
+  <a href="/docs">API docs</a>
+</header>
+<main>
+  <section class="card">
+    <label for="resume">Your resume</label>
+    <div class="row">
+      <input type="file" id="file" accept=".pdf,.docx,.txt" aria-label="Upload resume file" />
+      <span class="muted small">or paste text below</span>
+    </div>
+    <textarea id="resume" placeholder="Paste your resume text…"></textarea>
+  </section>
+  <section class="card">
+    <label for="jd">Job description</label>
+    <div class="row"><span class="muted small">Paste the full posting, including requirements and nice-to-haves.</span></div>
+    <textarea id="jd" placeholder="Paste the job description…"></textarea>
+    <div class="row">
+      <button id="go">Analyze</button>
+      <span id="status" class="muted small" role="status"></span>
+    </div>
+  </section>
+  <section id="results" class="card" hidden></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LABELS = {
+  required_skills: 'Required skills', keyword_similarity: 'Keyword match', preferred_skills: 'Nice-to-haves',
+  bullet_quality: 'Bullet quality', ats_readiness: 'ATS readiness', experience_fit: 'Experience fit',
+};
+
+$('go').addEventListener('click', async () => {
+  const jd = $('jd').value.trim();
+  const file = $('file').files[0];
+  const resume = $('resume').value.trim();
+  $('status').textContent = '';
+  if (jd.length < 50) { $('status').innerHTML = '<span class="err">Paste a longer job description.</span>'; return; }
+  if (!file && resume.length < 50) { $('status').innerHTML = '<span class="err">Upload or paste your resume.</span>'; return; }
+
+  $('go').disabled = true;
+  $('status').textContent = 'Analyzing…';
+  try {
+    let res;
+    if (file) {
+      const fd = new FormData();
+      fd.append('resume', file);
+      fd.append('job_description', jd);
+      res = await fetch('/api/v1/analyze/file', { method: 'POST', body: fd });
+    } else {
+      res = await fetch('/api/v1/analyze', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resume_text: resume, job_description: jd }),
+      });
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Request failed');
+    render(data);
+    $('status').textContent = '';
+  } catch (e) {
+    $('status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  } finally {
+    $('go').disabled = false;
+  }
+});
+
+function color(score) { return score >= 75 ? 'var(--good)' : score >= 55 ? 'var(--ok)' : 'var(--bad)'; }
+
+function render(d) {
+  const bars = Object.entries(d.breakdown).map(([k, v]) => `
+    <div class="bar"><span>${LABELS[k] || k}</span>
+      <div class="track"><div class="fill" style="width:${v.score}%;background:${color(v.score)}"></div></div>
+      <strong>${v.score}</strong></div>`).join('');
+  const chips = (xs, cls) => xs.length ? `<div class="chips">${xs.map((x) => `<span class="chip ${cls}">${esc(x)}</span>`).join('')}</div>` : '<p class="muted small">None</p>';
+  const exp = d.experience;
+  const expText = exp.required_years == null ? 'No minimum years stated.'
+    : `Posting asks for ${exp.required_years}+ years; detected about ${exp.estimated_years ?? 'unknown'}.`;
+
+  $('results').innerHTML = `
+    <div class="score-wrap">
+      <div class="dial" style="--p:${d.overall_score};--c:${color(d.overall_score)}"><div>${d.overall_score}</div></div>
+      <div><div class="grade">Grade ${esc(d.grade)}</div>
+        <div class="muted small">Required-skill coverage: ${d.skills.required_coverage ?? '—'}% · ${esc(expText)}</div></div>
+    </div>
+    <h2>Score breakdown</h2>${bars}
+    <h2>Missing required skills</h2>${chips(d.skills.missing_required, 'miss')}
+    <h2>Matched skills</h2>${chips(d.skills.matched, 'hit')}
+    <h2>Missing nice-to-haves</h2>${chips(d.skills.missing_preferred, '')}
+    <h2>Posting keywords not in your resume</h2>${chips(d.keywords.missing, '')}
+    <h2>What to fix first</h2>
+    ${d.suggestions.map((s) => `<div class="sugg ${esc(s.priority)}"><strong>${esc(s.area)}</strong> · ${esc(s.message)}</div>`).join('') || '<p class="muted">Looks strong.</p>'}
+    <h2>Weakest bullets (avg ${d.bullets.average_score}/100 across ${d.bullets.count})</h2>
+    ${d.bullets.weakest.map((b) => `<div class="bullet"><strong>${b.score}</strong> · ${esc(b.text)}
+      ${b.issues.length ? `<div class="muted small">${b.issues.map(esc).join(' ')}</div>` : ''}</div>`).join('') || '<p class="muted small">No bullets detected.</p>'}
+  `;
+  $('results').hidden = false;
+  $('results').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
