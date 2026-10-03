@@ -12,6 +12,8 @@
 
 Used by [JobPilot](https://github.com/si1051/jobpilot) to score every application, and works standalone with its own web UI.
 
+![ResumeLens results](docs/results.png)
+
 ## How the score works
 
 | Signal | Weight | How it's measured |

@@ -20,6 +20,13 @@ _EXTRA_STOP = {
     "understanding", "new", "build", "building", "help", "looking", "join", "opportunity", "will", "able",
     "related", "field", "degree", "bachelor", "master", "equivalent", "etc", "similar", "environment",
     "across", "within", "make", "high", "quality", "solutions", "solution", "business", "best",
+    # common job-posting filler that says nothing about the actual stack
+    "professional", "designing", "design", "hands", "habits", "tooling", "tools", "developing", "develop",
+    "implementing", "implement", "writing", "write", "proven", "familiarity", "familiar", "exposure", "deep",
+    "passion", "passionate", "fast", "paced", "collaborative", "communication", "written", "verbal", "problem",
+    "solving", "minimum", "nice", "technical", "technologies", "technology", "software", "engineering",
+    "engineer", "engineers", "systems", "services", "applications", "application", "platform", "production",
+    "scale", "large", "modern", "world", "class", "hands-on", "self", "starter", "growth", "impact",
 }
 STOP_WORDS = frozenset(_SK_STOP) | _EXTRA_STOP
 _TOKEN = re.compile(r"[a-z][a-z0-9+#.]*[a-z0-9+#]|[a-z]")
